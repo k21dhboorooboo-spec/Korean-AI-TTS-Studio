@@ -1,5 +1,9 @@
 """Korean AI TTS Studio desktop dashboard. CPU work stays off Tk's UI thread."""
 import json
+import traceback
+import os
+import sys
+from datetime import datetime
 import re
 import threading
 import time
@@ -10,6 +14,21 @@ from tkinter import filedialog, messagebox, ttk
 
 from neural_engine import EMOTIONS, NeuralTTS, parse_emotion
 from srt_sync import parse_srt, render
+
+
+def diagnostic_path():
+    base = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'KoreanAITTSStudio' / 'logs'
+    base.mkdir(parents=True, exist_ok=True)
+    return base / 'tts_errors.log'
+
+
+def check_engine():
+    """Check bundled Python dependencies without downloading model weights."""
+    import importlib
+    for name in ('torch', 'torchaudio', 'chatterbox.mtl_tts'):
+        importlib.import_module(name)
+    from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+    return ChatterboxMultilingualTTS
 
 
 def cue_summary(data):
@@ -108,7 +127,28 @@ class App:
         footer = ttk.Frame(base); footer.pack(fill='x')
         self.btn = ttk.Button(footer, text='▶ WAV 음성 생성 시작', command=self.start)
         self.btn.pack(side='left')
+        ttk.Button(footer, text='엔진 설치 상태 확인', command=self.check_installation).pack(side='left', padx=8)
         ttk.Label(footer, text='첫 모델 다운로드 및 CPU 추론 중에는 한 구간이 오래 걸릴 수 있습니다.', foreground='#666').pack(side='left', padx=12)
+
+    def check_installation(self):
+        self.stage.set('엔진 구성 확인 중')
+        self.status.set('모델 다운로드 없이 필요한 라이브러리를 검사합니다.')
+        def worker():
+            try:
+                check_engine()
+                self.root.after(0, lambda: self._check_result(True, '필수 라이브러리 확인 완료. 실제 음성 생성은 별도 테스트가 필요합니다.'))
+            except Exception as exc:
+                detail = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                path = diagnostic_path()
+                with path.open('a', encoding='utf-8') as log:
+                    log.write(f'\n[{datetime.now().isoformat()}] Engine preflight\n{detail}\n')
+                self.root.after(0, lambda msg=str(exc), location=str(path): self._check_result(False, f'{msg}\n오류 로그: {location}'))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _check_result(self, ok, msg):
+        self.stage.set('엔진 확인 완료' if ok else '엔진 확인 실패')
+        self.status.set(msg)
+        messagebox.showinfo('엔진 확인', msg) if ok else messagebox.showerror('엔진 확인 실패', msg)
 
     def _refresh_summary(self):
         try:
@@ -158,6 +198,13 @@ class App:
                 raise ValueError('대본에 생성할 문장이 없습니다.')
         except Exception as e:
             messagebox.showerror('SRT 오류', str(e))
+            return
+        try:
+            check_engine()
+        except Exception as e:
+            self.stage.set('엔진 확인 실패')
+            self.status.set(f'음성 생성 시작 전 검사 실패: {e}')
+            messagebox.showerror('엔진 확인 실패', f'{e}\n먼저 엔진 설치 상태 확인 버튼을 사용해 주세요.')
             return
         out = filedialog.asksaveasfilename(defaultextension='.wav', filetypes=[('WAV', '*.wav')])
         if not out:
@@ -239,7 +286,10 @@ class App:
                 self.root.after(0, self._cue_done, 1, 1)
             self.root.after(0, self._finish, True, '저장 완료: ' + out)
         except Exception as e:
-            self.root.after(0, self._finish, False, '오류: ' + str(e))
+            path = diagnostic_path()
+            with path.open('a', encoding='utf-8') as log:
+                log.write(f'\n[{datetime.now().isoformat()}] Generation failure\n{traceback.format_exc()}\n')
+            self.root.after(0, self._finish, False, '오류: ' + str(e) + '\n진단 로그: ' + str(path))
 
     def _on_close(self):
         if self.running:
