@@ -1,1 +1,0 @@
-v1.3: Windows WinError 32 voices.sqlite3 file lock fix. SQLite connections now explicitly close on success and failure. Replace the existing repository contents with the contents of this ZIP and push a new commit. Logic tests passed on Linux; Windows EXE and neural inference are not verified.
