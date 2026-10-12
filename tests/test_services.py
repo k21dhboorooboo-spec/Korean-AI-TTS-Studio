@@ -1,17 +1,36 @@
-import tempfile, unittest, wave
+import gc, os, tempfile, time, unittest, wave
+from contextlib import contextmanager
 from pathlib import Path
 from studio_services import VoiceLibrary, AudioCache, inspect_srt, batch_manifest
 
+@contextmanager
+def windows_safe_tempdir():
+    """Close SQLite finalizers and retry Windows transient file locks on cleanup."""
+    d = tempfile.mkdtemp(prefix='tts_test_')
+    try:
+        yield d
+    finally:
+        import shutil
+        for attempt in range(12):
+            gc.collect()
+            try:
+                shutil.rmtree(d)
+                break
+            except PermissionError:
+                if os.name != 'nt' or attempt == 11:
+                    raise
+                time.sleep(0.2)
+
 class ServicesTest(unittest.TestCase):
     def test_library_persists(self):
-        with tempfile.TemporaryDirectory() as d:
+        with windows_safe_tempdir() as d:
             a=VoiceLibrary(d);a.put('주인공','KR','KR');self.assertEqual(VoiceLibrary(d).all()['주인공']['voice'],'KR')
     def test_reference_requires_consent(self):
-        with tempfile.TemporaryDirectory() as d:
+        with windows_safe_tempdir() as d:
             p=Path(d)/'voice.wav';p.write_bytes(b'not audio')
             with self.assertRaises(ValueError):VoiceLibrary(d).put('인물','KR',reference=p,consent=False)
     def test_cache_roundtrip(self):
-        with tempfile.TemporaryDirectory() as d:
+        with windows_safe_tempdir() as d:
             a=AudioCache(d);src=Path(d)/'test.wav';dst=Path(d)/'out.wav'
             with wave.open(str(src),'wb') as w:
                 w.setnchannels(1);w.setsampwidth(2);w.setframerate(24000);w.writeframes(b'\x00\x00'*100)
@@ -22,7 +41,7 @@ class ServicesTest(unittest.TestCase):
         cues=[(0,1000,'나레이터','안녕하세요'),(900,1000,'A','긴 글입니다 테스트')]
         self.assertTrue(any('겹침' in w for w in inspect_srt(cues)))
     def test_batch_manifest(self):
-        with tempfile.TemporaryDirectory() as d:
+        with windows_safe_tempdir() as d:
             for n in ('a.srt','b.txt','c.png'): (Path(d)/n).touch()
             self.assertEqual(len(batch_manifest(d)),2)
 if __name__=='__main__':unittest.main()

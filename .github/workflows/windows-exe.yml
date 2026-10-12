@@ -19,13 +19,33 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
           python -m pip install chatterbox-tts pyinstaller
+          python -m pip check
+      - name: Verify neural dependency import before packaging
+        shell: pwsh
+        run: |
+          python -c "from chatterbox.mtl_tts import ChatterboxMultilingualTTS; print('Chatterbox import OK')"
+      - name: Check installed package metadata
+        shell: pwsh
+        run: |
+          python -c "import importlib.metadata as m; packages = ['requests', 'transformers', 'huggingface-hub', 'tokenizers', 'safetensors', 'numpy', 'packaging', 'torch', 'torchaudio', 'chatterbox-tts']; [(print(p, m.version(p))) for p in packages]"
       - name: Run logic tests
         run: python -m unittest discover -s tests -v
       - name: Build Windows EXE folder
         shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --onedir --windowed --name KoreanAITTSStudioNeural --collect-all chatterbox --collect-all torch --collect-all torchaudio neural_app.py
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --name KoreanAITTSStudioNeural --collect-all chatterbox --collect-all torch --collect-all torchaudio --collect-all transformers --collect-all huggingface_hub --collect-all requests --collect-all tokenizers --collect-all safetensors --recursive-copy-metadata chatterbox-tts --recursive-copy-metadata transformers --recursive-copy-metadata requests --recursive-copy-metadata huggingface-hub --collect-submodules chatterbox neural_app.py
           if (!(Test-Path 'dist/KoreanAITTSStudioNeural/KoreanAITTSStudioNeural.exe')) { throw 'EXE not generated' }
+      - name: Smoke test packaged dependency imports
+        shell: pwsh
+        run: |
+          $internal = 'dist/KoreanAITTSStudioNeural/_internal'
+          if (!(Test-Path "$internal/chatterbox")) { throw 'Chatterbox package missing from bundled _internal' }
+          if (!(Test-Path "$internal/torch")) { throw 'Torch package missing from bundled _internal' }
+      - name: Verify bundled package metadata
+        shell: pwsh
+        run: |
+          $meta = Get-ChildItem "dist/KoreanAITTSStudioNeural/_internal" -Recurse -Directory -Filter "requests-*.dist-info"
+          if (!$meta) { throw "requests package metadata missing from bundled EXE" }
       - name: Upload portable EXE package
         uses: actions/upload-artifact@v4
         with:
