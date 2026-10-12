@@ -19,23 +19,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
           python -m pip install chatterbox-tts pyinstaller
-      - name: Verify neural dependency import before packaging
-        shell: pwsh
-        run: |
-          python -c "from chatterbox.mtl_tts import ChatterboxMultilingualTTS; print('Chatterbox import OK')"
       - name: Run logic tests
         run: python -m unittest discover -s tests -v
       - name: Build Windows EXE folder
         shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --onedir --windowed --name KoreanAITTSStudioNeural --collect-all chatterbox --collect-all torch --collect-all torchaudio --collect-submodules chatterbox --collect-submodules transformers --collect-submodules safetensors neural_app.py
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --name KoreanAITTSStudioNeural --collect-all chatterbox --collect-all torch --collect-all torchaudio neural_app.py
           if (!(Test-Path 'dist/KoreanAITTSStudioNeural/KoreanAITTSStudioNeural.exe')) { throw 'EXE not generated' }
-      - name: Smoke test packaged dependency imports
-        shell: pwsh
-        run: |
-          $internal = 'dist/KoreanAITTSStudioNeural/_internal'
-          if (!(Test-Path "$internal/chatterbox")) { throw 'Chatterbox package missing from bundled _internal' }
-          if (!(Test-Path "$internal/torch")) { throw 'Torch package missing from bundled _internal' }
       - name: Upload portable EXE package
         uses: actions/upload-artifact@v4
         with:

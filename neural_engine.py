@@ -22,8 +22,8 @@ class NeuralTTS:
         try:
             import torch,torchaudio
             from chatterbox.mtl_tts import ChatterboxMultilingualTTS
-        except (ImportError, OSError) as e:
-            raise RuntimeError(f'신경망 엔진 로딩 실패 ({type(e).__name__}: {e}). 진단 로그를 확인하세요. 설치된 EXE에는 BAT 설치가 적용되지 않습니다.') from e
+        except ImportError as e:
+            raise RuntimeError('신경망 엔진 미설치: install_neural_windows.bat 실행 필요') from e
         if language not in self.models:
             self.models[language]=ChatterboxMultilingualTTS.from_pretrained(device='cpu')
         model=self.models[language]
