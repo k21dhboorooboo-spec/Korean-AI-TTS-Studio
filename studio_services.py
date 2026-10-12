@@ -8,16 +8,27 @@ class VoiceLibrary:
     def __init__(self, root=APP_DATA):
         self.root=Path(root); self.root.mkdir(parents=True,exist_ok=True)
         self.db=self.root/'voices.sqlite3'
-        with sqlite3.connect(self.db) as conn:
+        conn = sqlite3.connect(self.db)
+        try:
             conn.execute('CREATE TABLE IF NOT EXISTS voices (name TEXT PRIMARY KEY, language TEXT NOT NULL, voice TEXT NOT NULL, reference TEXT, consent INTEGER NOT NULL DEFAULT 0)')
+            conn.commit()
+        finally:
+            conn.close()
     def put(self,name,language,voice='자동',reference=None,consent=False):
         if not name.strip() or language not in ('KR','EN','JP'): raise ValueError('화자 이름/언어 오류')
         if reference and (not consent or not Path(reference).is_file()): raise ValueError('샘플 파일 및 사용 권한을 확인하세요')
-        with sqlite3.connect(self.db) as conn:
+        conn = sqlite3.connect(self.db)
+        try:
             conn.execute('INSERT OR REPLACE INTO voices VALUES(?,?,?,?,?)',(name.strip(),language,voice,str(Path(reference).resolve()) if reference else None,int(consent)))
+            conn.commit()
+        finally:
+            conn.close()
     def all(self):
-        with sqlite3.connect(self.db) as conn:
+        conn = sqlite3.connect(self.db)
+        try:
             return {n:dict(language=l,voice=v,**({'reference_wav':r,'consent':bool(c)} if r else {})) for n,l,v,r,c in conn.execute('SELECT * FROM voices')}
+        finally:
+            conn.close()
 
 class AudioCache:
     def __init__(self,root=APP_DATA):
